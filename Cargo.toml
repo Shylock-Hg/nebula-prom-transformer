@@ -1,0 +1,18 @@
+[package]
+name = "nebula-prom-transformer"
+version = "0.1.0"
+authors = ["Shylock Hg <33566796+Shylock-Hg@users.noreply.github.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+reqwest = "0.9.24"
+rocket = "0.4.2"
+clap = "2.33.0"
+log = "0.4.8"
+log4rs = "0.9.0"
+serde = "1.0.103"
+serde_json = "1.0.44"
+prometheus = "0.7.0"
+lazy_static = "1.4.0"

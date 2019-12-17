@@ -19,6 +19,8 @@ const NEBULA_ADDR: &str = "nebula-addr";
 const NEBULA_PORT: &str = "nebula-port";
 const PORT: &str = "port";
 
+const INTERNAL_ERROR: &str = "Internal Error";
+
 // TODO(shylock) Cache the metrics?
 // NOT Cache metrics now
 lazy_static! {
@@ -171,9 +173,25 @@ fn setup_logging() {
 /// Transform the standard metrics to Prometheus format structure
 /// Which model by the prometheus 3rd-party library
 #[get("/metrics")]
-fn get_metrics() -> String {
-    let metrics: Metrics = reqwest::get(&*URL.read().unwrap()).unwrap().json().unwrap();
-    return prometheus_format(&metrics);
+fn get_metrics() -> Result<String, rocket::http::Status> {
+    let resp = reqwest::get(&*URL.read().unwrap());
+    let mut json;
+    match resp {
+        Ok(v) => json = v,
+        Err(_) => {
+            error!("Scrape metrics from {} failed!", URL.read().unwrap());
+            return Err(rocket::http::Status::new(500, INTERNAL_ERROR));
+        }
+    }
+    let metrics;
+    match json.json() {
+        Ok(v) => metrics = v,
+        Err(_) => {
+            error!("Invalid json format!");
+            return Err(rocket::http::Status::new(500, INTERNAL_ERROR));
+        }
+    }
+    return Ok(prometheus_format(&metrics));
 }
 
 #[get("/")]

@@ -13,7 +13,7 @@ extern crate lazy_static;
 #[macro_use]
 extern crate rocket;
 extern crate reqwest;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 
 const NEBULA_ADDR: &str = "nebula-addr";
 const NEBULA_PORT: &str = "nebula-port";
@@ -68,7 +68,7 @@ fn main() {
         .arg(
             clap::Arg::with_name(PORT)
                 .long(PORT)
-                .help("Specify the prot to expose metrics data encoded in prometheus format")
+                .help("Specify the port to expose metrics data encoded in prometheus format")
                 .default_value("2333")
                 .takes_value(true),
         )
@@ -115,7 +115,9 @@ struct Gauge {
 #[derive(Deserialize, Serialize, Debug)]
 struct Histogram {
     pub name: String,
-    pub value_range: [i64; 2],
+    pub value_range: [f64; 2],
+    pub sum: f64,
+    pub count: u64,
     pub buckets: Vec<u64>,
     pub labels: Vec<Label>,
 }
@@ -199,20 +201,28 @@ fn prometheus_format(m: &Metrics) -> String {
 
     // Now we expose the gauge computed from histogram!
     // We need to construct histogram with buckets filled!
-    // for h in m.histograms() {
-    // let histogram_option = prometheus::HistogramOpts::new(
-    // h.name.clone(),
-    // "Record all histograms about Nebula".to_string(),
-    // );
-    // let mut buckets: Vec<f64> = vec![];
-    // for b in &h.buckets {
-    // // It's bound
-    // buckets.push(*b as f64);
-    // }
-    // let histogram =
-    // prometheus::Histogram::with_opts(histogram_option.buckets(buckets)).unwrap();
-    // reg.register(Box::new(histogram.clone())).unwrap();
-    // }
+    for h in m.histograms() {
+        let histogram_option = prometheus::HistogramOpts::new(
+            h.name.clone(),
+            "Record all histograms about Nebula".to_string(),
+        );
+        let buckets = h.buckets.clone();
+        let diff = (h.value_range[1] - h.value_range[0]) / h.buckets.len() as f64;
+        let bounds =
+            prometheus::linear_buckets(h.value_range[0] + diff, diff, h.buckets.len()).unwrap();
+        let histogram_option = histogram_option.buckets(buckets);
+        let histogram_option = histogram_option.bounds(bounds);
+        let labels: std::collections::HashMap<String, String> = h
+            .labels
+            .iter()
+            .map(|label| (label.name.clone(), label.value.clone()))
+            .collect();
+        let histogram_option = histogram_option.const_labels(labels);
+        let histogram_option = histogram_option.sum(h.sum);
+        let histogram_option = histogram_option.count(h.count);
+        let histogram = prometheus::Histogram::with_opts(histogram_option).unwrap();
+        reg.register(Box::new(histogram.clone())).unwrap();
+    }
     let mut buffer = vec![];
     let metrics = reg.gather();
     encoder.encode(&metrics, &mut buffer).unwrap();

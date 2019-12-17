@@ -92,7 +92,7 @@ fn main() {
     let config = rocket::config::Config::build(rocket::config::Environment::Staging)
         .address("localhost")
         .port(port)
-        .workers(12)
+        .workers(4)
         .unwrap();
     rocket::custom(config)
         .mount("/", routes![hello, get_metrics])
@@ -100,10 +100,16 @@ fn main() {
 }
 
 #[derive(Deserialize, Serialize, Debug)]
+struct Label {
+    name: String,
+    value: String,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
 struct Gauge {
     pub name: String,
     pub value: i64,
-    pub labels: Vec<String>,
+    pub labels: Vec<Label>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -111,7 +117,7 @@ struct Histogram {
     pub name: String,
     pub value_range: [i64; 2],
     pub buckets: Vec<u64>,
-    pub lables: Vec<String>,
+    pub labels: Vec<Label>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -181,10 +187,16 @@ fn prometheus_format(m: &Metrics) -> String {
     for g in m.gauges() {
         let gauge_option =
             prometheus::Opts::new(g.name.clone(), "Record all gauges about nebula".to_string());
-        let gauge = prometheus::Gauge::with_opts(gauge_option).unwrap();
+        let labels: std::collections::HashMap<String, String> = g
+            .labels
+            .iter()
+            .map(|label| (label.name.clone(), label.value.clone()))
+            .collect();
+        let gauge = prometheus::Gauge::with_opts(gauge_option.const_labels(labels)).unwrap();
         gauge.set(g.value as f64);
         reg.register(Box::new(gauge.clone())).unwrap();
     }
+
     // Now we expose the gauge computed from histogram!
     // We need to construct histogram with buckets filled!
     // for h in m.histograms() {

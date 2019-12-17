@@ -43,7 +43,7 @@ lazy_static! {
         //histograms: vec![],
     //}));
 
-    static ref URL: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+    static ref URL: Arc<RwLock<String>> = Arc::new(RwLock::new(String::new()));
 }
 
 fn main() {
@@ -84,8 +84,8 @@ fn main() {
 
     let url: String = format!("http://{}:{}/metrics", nebula_addr, nebula_port);
     {
-        URL.lock().unwrap().push_str(&url);
-        warn!("The url: {}", URL.lock().unwrap());
+        URL.write().unwrap().push_str(&url);
+        warn!("The url: {}", URL.read().unwrap());
     }
 
     // Setup HTTP API
@@ -170,7 +170,7 @@ fn setup_logging() {
 /// Which model by the prometheus 3rd-party library
 #[get("/metrics")]
 fn get_metrics() -> String {
-    let metrics: Metrics = reqwest::get(&*URL.lock().unwrap()).unwrap().json().unwrap();
+    let metrics: Metrics = reqwest::get(&*URL.read().unwrap()).unwrap().json().unwrap();
     return prometheus_format(&metrics);
 }
 

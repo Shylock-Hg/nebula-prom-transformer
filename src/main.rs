@@ -202,24 +202,24 @@ fn prometheus_format(m: &Metrics) -> String {
     // Now we expose the gauge computed from histogram!
     // We need to construct histogram with buckets filled!
     for h in m.histograms() {
-        let histogram_option = prometheus::HistogramOpts::new(
-            h.name.clone(),
-            "Record all histograms about Nebula".to_string(),
-        );
         let buckets = h.buckets.clone();
         let diff = (h.value_range[1] - h.value_range[0]) / h.buckets.len() as f64;
         let bounds =
             prometheus::linear_buckets(h.value_range[0] + diff, diff, h.buckets.len()).unwrap();
-        let histogram_option = histogram_option.buckets(buckets);
-        let histogram_option = histogram_option.bounds(bounds);
         let labels: std::collections::HashMap<String, String> = h
             .labels
             .iter()
             .map(|label| (label.name.clone(), label.value.clone()))
             .collect();
-        let histogram_option = histogram_option.const_labels(labels);
-        let histogram_option = histogram_option.sum(h.sum);
-        let histogram_option = histogram_option.count(h.count);
+        let histogram_option = prometheus::HistogramOpts::new(
+            h.name.clone(),
+            "Record all histograms about Nebula".to_string(),
+        )
+        .buckets(buckets)
+        .bounds(bounds)
+        .const_labels(labels)
+        .sum(h.sum)
+        .count(h.count);
         let histogram = prometheus::Histogram::with_opts(histogram_option).unwrap();
         reg.register(Box::new(histogram.clone())).unwrap();
     }

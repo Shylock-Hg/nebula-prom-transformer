@@ -51,7 +51,7 @@ lazy_static! {
 fn main() {
     setup_logging();
     let matches = clap::App::new("nebula-prom-transformer")
-        .version("1.0")
+        .version("0.1.0")
         .author("Shylock Hg <shylock.huang@vesoft.com>")
         .about("Transform the raw metrics data from nebula to prometheus defined format")
         .arg(
@@ -64,7 +64,7 @@ fn main() {
         .arg(
             clap::Arg::with_name(NEBULA_PORT)
                 .long(NEBULA_PORT)
-                .help("Specify the nebula metric expose port")
+                .help("Specify the nebula metric expose port, normally [11000, 12000 or 13000]")
                 .takes_value(true),
         )
         .arg(

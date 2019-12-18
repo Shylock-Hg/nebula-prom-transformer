@@ -211,8 +211,7 @@ fn prometheus_format(m: &Metrics) -> String {
         reg.register(Box::new(gauge.clone())).unwrap();
     }
 
-    // Now we expose the gauge computed from histogram!
-    // We need to construct histogram with buckets filled!
+    // Histograms
     for h in m.histograms() {
         let buckets = h.buckets.clone();
         let diff = (h.value_range[1] - h.value_range[0]) / h.buckets.len() as f64;

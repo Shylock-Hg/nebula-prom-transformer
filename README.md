@@ -35,3 +35,4 @@ If want to expose these to Prometheus, please refer to https://prometheus.io/doc
 
 1. Disable Rocket log color.
 2. Flow control to limit QPS.
+3. CI/CD, Building, Testing, Deployment

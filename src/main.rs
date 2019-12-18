@@ -87,7 +87,7 @@ fn main() {
     let url: String = format!("http://{}:{}/metrics", nebula_addr, nebula_port);
     {
         URL.write().unwrap().push_str(&url);
-        warn!("The url: {}", URL.read().unwrap());
+        info!("The url: {}", URL.read().unwrap());
     }
 
     // Setup HTTP API
@@ -145,26 +145,20 @@ fn setup_logging() {
     use log4rs::append::console::ConsoleAppender;
     use log4rs::append::file::FileAppender;
     use log4rs::config::{Appender, Config, Logger, Root};
-    use log4rs::encode::pattern::PatternEncoder;
 
     let stdout = ConsoleAppender::builder().build();
-
-    let filelog = FileAppender::builder()
-        .encoder(Box::new(PatternEncoder::new("{d} - {m}{n}")))
-        .build("log/log.log")
-        .unwrap();
+    let filelog = FileAppender::builder().build("log/log.log").unwrap();
 
     let config = Config::builder()
         .appender(Appender::builder().build("stdout", Box::new(stdout)))
         .appender(Appender::builder().build("filelog", Box::new(filelog)))
-        .logger(Logger::builder().build("app::backend::db", LevelFilter::Info))
-        .logger(
-            Logger::builder()
-                .appender("filelog")
-                .additive(false)
-                .build("app::requests", LevelFilter::Info),
+        .logger(Logger::builder().build("app::log", LevelFilter::Warn))
+        .logger(Logger::builder().build("app::filelog", LevelFilter::Info))
+        .build(
+            Root::builder()
+                .appenders(vec!["stdout", "filelog"])
+                .build(LevelFilter::Warn),
         )
-        .build(Root::builder().appender("stdout").build(LevelFilter::Warn))
         .unwrap();
 
     log4rs::init_config(config).unwrap();

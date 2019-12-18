@@ -1,3 +1,0 @@
-[submodule "vendor/prometheus"]
-	path = vendor/prometheus
-	url = https://github.com/Shylock-Hg/rust-prometheus.git

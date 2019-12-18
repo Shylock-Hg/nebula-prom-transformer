@@ -22,6 +22,15 @@ FAQ:
 1. `nebula-prom-transformer --help`, `command not found`, then you need add the *~/.cargo/bin* to
 `PATH`, i.e. `PATH="~/.cargo/bin:$PATH"`.
 
+## Result
+
+Now you can access the prometheus encoded metrics data from port 2333, such as:
+```bash
+curl localhost:2333/metrics
+```
+
+If want to expose these to Prometheus, please refer to https://prometheus.io/docs/prometheus/latest/getting_started/
+
 # TODO
 
 1. Disable Rocket log color.

@@ -70,6 +70,7 @@ fn main() {
             clap::Arg::with_name(NEBULA_PORT)
                 .long(NEBULA_PORT)
                 .help("Specify the nebula metric expose port, normally [11000, 12000 or 13000]")
+                .required(true)
                 .takes_value(true),
         )
         .arg(

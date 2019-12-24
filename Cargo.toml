@@ -17,4 +17,4 @@ prometheus = "0.7.0"
 lazy_static = "1.4.0"
 
 [replace]
-"prometheus: 0.7.0" = { git = "https://github.com/shylock-hg/rust-prometheus", branch = "feature/construct-metrics" }
+"prometheus: 0.7.0" = { git = "https://github.com/shylock-hg/rust-prometheus", branch = "feature/statistics-reset" }

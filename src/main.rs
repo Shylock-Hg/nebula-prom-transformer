@@ -231,12 +231,10 @@ fn prometheus_format(m: &Metrics) -> String {
             h.name.clone(),
             "Record all histograms about Nebula".to_string(),
         )
-        .buckets(buckets)
-        .bounds(bounds)
-        .const_labels(labels)
-        .sum(h.sum)
-        .count(h.count);
+        .buckets(bounds)
+        .const_labels(labels);
         let histogram = prometheus::Histogram::with_opts(histogram_option).unwrap();
+        histogram.reset(h.sum, h.count, buckets).unwrap();
         reg.register(Box::new(histogram.clone())).unwrap();
     }
     let mut buffer = vec![];

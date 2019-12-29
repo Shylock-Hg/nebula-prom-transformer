@@ -20,8 +20,7 @@ extern crate rocket;
 extern crate reqwest;
 use std::sync::{Arc, RwLock};
 
-const NEBULA_ADDR: &str = "nebula-addr";
-const NEBULA_PORT: &str = "nebula-port";
+const NEBULA_ADDR: &str = "nebula-addr-ports";
 const PORT: &str = "port";
 
 const INTERNAL_ERROR: &str = "Internal Error";
@@ -50,7 +49,7 @@ lazy_static! {
         //histograms: vec![],
     //}));
 
-    static ref URL: Arc<RwLock<String>> = Arc::new(RwLock::new(String::new()));
+    static ref URL: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(vec![]));
 }
 
 fn main() {
@@ -62,14 +61,11 @@ fn main() {
         .arg(
             clap::Arg::with_name(NEBULA_ADDR)
                 .long(NEBULA_ADDR)
-                .help("Specify the nebula metric expose address")
-                .default_value("localhost")
-                .takes_value(true),
-        )
-        .arg(
-            clap::Arg::with_name(NEBULA_PORT)
-                .long(NEBULA_PORT)
-                .help("Specify the nebula metric expose port, normally [11000, 12000 or 13000]")
+                .help(
+                    "Specify the nebula metric expose address, \
+                      e.g. `localhost:11000,localhost:12000,localhost:13000`",
+                )
+                .required(true)
                 .takes_value(true),
         )
         .arg(
@@ -81,18 +77,24 @@ fn main() {
         )
         .get_matches();
     let nebula_addr = matches.value_of(NEBULA_ADDR).unwrap();
-    let nebula_port = matches.value_of(NEBULA_PORT).unwrap();
-    info!(
-        "Scrape raw metrics from http://{}:{}/metrics!",
-        nebula_addr, nebula_port
-    );
+    let nebula_addrs: Vec<String> = nebula_addr.split(",").map(|s| s.to_string()).collect();
+    for a in &nebula_addrs {
+        info!("Scrape raw metrics from http://{}/metrics!", a);
+    }
     let port = matches.value_of(PORT).unwrap().parse::<u16>().unwrap();
     info!("Expose at port http://localhost:{}/metrics!", port);
 
-    let url: String = format!("http://{}:{}/metrics", nebula_addr, nebula_port);
+    //    let url: String = format!("http://{}:{}/metrics", nebula_addr, nebula_port);
+    let mut urls: Vec<String> = nebula_addrs
+        .iter()
+        .map(|a| format!("http://{}/metrics", a))
+        .collect();
     {
-        URL.write().unwrap().push_str(&url);
-        info!("The url: {}", URL.read().unwrap());
+        let mut w_urls = URL.write().unwrap();
+        w_urls.append(&mut urls);
+        for url in w_urls.iter() {
+            info!("The url: {}", url);
+        }
     }
 
     // Setup HTTP API
@@ -173,22 +175,35 @@ fn setup_logging() {
 /// Which model by the prometheus 3rd-party library
 #[get("/metrics")]
 fn get_metrics() -> Result<String, rocket::http::Status> {
-    let resp = reqwest::get(&*URL.read().unwrap());
-    let mut json;
-    match resp {
-        Ok(v) => json = v,
-        Err(_) => {
-            error!("Scrape metrics from {} failed!", URL.read().unwrap());
-            return Err(rocket::http::Status::new(500, INTERNAL_ERROR));
-        }
-    }
-    let metrics;
-    match json.json() {
-        Ok(v) => metrics = v,
-        Err(_) => {
-            error!("Invalid json format!");
-            return Err(rocket::http::Status::new(500, INTERNAL_ERROR));
-        }
+    let client = reqwest::Client::new();
+    // TODO(shylock) Parallel
+    let mut resps: Vec<reqwest::Result<reqwest::Response>> = URL
+        .read()
+        .unwrap()
+        .iter()
+        .map(|u| client.get(u).send())
+        .collect();
+    let metrics: Vec<Option<Metrics>> = resps
+        .iter_mut()
+        .map(|resp| match resp {
+            Ok(r) => match r.json() {
+                Ok(m) => Some(m),
+                Err(e) => {
+                    error!("Invalid JSON! {}", e);
+                    None
+                }
+            },
+            Err(e) => {
+                error!("Scrap failed! {}", e);
+                None
+            }
+        })
+        .collect();
+    if !metrics
+        .iter()
+        .fold(false, |r, m| if let Some(_) = m { true } else { r })
+    {
+        return Err(rocket::http::Status::new(500, INTERNAL_ERROR));
     }
     return Ok(prometheus_format(&metrics));
 }
@@ -199,44 +214,52 @@ fn hello() -> &'static str {
 }
 
 // Format Prometheus
-fn prometheus_format(m: &Metrics) -> String {
+fn prometheus_format(ms: &Vec<Option<Metrics>>) -> String {
     let reg = prometheus::Registry::new();
-    let encoder = prometheus::TextEncoder::new();
-    // Gauges
-    for g in m.gauges() {
-        let gauge_option =
-            prometheus::Opts::new(g.name.clone(), "Record all gauges about nebula".to_string());
-        let labels: std::collections::HashMap<String, String> = g
-            .labels
-            .iter()
-            .map(|label| (label.name.clone(), label.value.clone()))
-            .collect();
-        let gauge = prometheus::Gauge::with_opts(gauge_option.const_labels(labels)).unwrap();
-        gauge.set(g.value as f64);
-        reg.register(Box::new(gauge.clone())).unwrap();
-    }
+    for mo in ms {
+        if let Some(m) = mo {
+            // Gauges
+            for g in m.gauges() {
+                let gauge_option = prometheus::Opts::new(
+                    g.name.clone(),
+                    "Record all gauges about nebula".to_string(),
+                );
+                let labels: std::collections::HashMap<String, String> = g
+                    .labels
+                    .iter()
+                    .map(|label| (label.name.clone(), label.value.clone()))
+                    .collect();
+                let gauge =
+                    prometheus::Gauge::with_opts(gauge_option.const_labels(labels)).unwrap();
+                gauge.set(g.value as f64);
+                reg.register(Box::new(gauge.clone())).unwrap();
+            }
 
-    // Histograms
-    for h in m.histograms() {
-        let buckets = h.buckets.clone();
-        let diff = (h.value_range[1] - h.value_range[0]) / h.buckets.len() as f64;
-        let bounds =
-            prometheus::linear_buckets(h.value_range[0] + diff, diff, h.buckets.len()).unwrap();
-        let labels: std::collections::HashMap<String, String> = h
-            .labels
-            .iter()
-            .map(|label| (label.name.clone(), label.value.clone()))
-            .collect();
-        let histogram_option = prometheus::HistogramOpts::new(
-            h.name.clone(),
-            "Record all histograms about Nebula".to_string(),
-        )
-        .buckets(bounds)
-        .const_labels(labels);
-        let histogram = prometheus::Histogram::with_opts(histogram_option).unwrap();
-        histogram.reset(h.sum, h.count, buckets).unwrap();
-        reg.register(Box::new(histogram.clone())).unwrap();
+            // Histograms
+            for h in m.histograms() {
+                let buckets = h.buckets.clone();
+                let diff = (h.value_range[1] - h.value_range[0]) / h.buckets.len() as f64;
+                let bounds =
+                    prometheus::linear_buckets(h.value_range[0] + diff, diff, h.buckets.len())
+                        .unwrap();
+                let labels: std::collections::HashMap<String, String> = h
+                    .labels
+                    .iter()
+                    .map(|label| (label.name.clone(), label.value.clone()))
+                    .collect();
+                let histogram_option = prometheus::HistogramOpts::new(
+                    h.name.clone(),
+                    "Record all histograms about Nebula".to_string(),
+                )
+                .buckets(bounds)
+                .const_labels(labels);
+                let histogram = prometheus::Histogram::with_opts(histogram_option).unwrap();
+                histogram.reset(h.sum, h.count, buckets).unwrap();
+                reg.register(Box::new(histogram.clone())).unwrap();
+            }
+        }
     }
+    let encoder = prometheus::TextEncoder::new();
     let mut buffer = vec![];
     let metrics = reg.gather();
     encoder.encode(&metrics, &mut buffer).unwrap();
